@@ -1,0 +1,110 @@
+project:
+  name: quantumORB
+  mode: research
+  timezone: America/New_York
+
+data:
+  base_currency: USD
+  asset_class: futures
+  raw_data_dir: data/raw
+  processed_data_dir: data/processed
+  session_template: regular_trading_hours
+
+backtest:
+  engine_name: custom
+  initial_capital: 100000.0
+  commission_model: fixed_per_unit
+  slippage_model: fixed_per_unit
+  allow_short: true
+  entry_convention: next_bar_open
+  one_position_only: true
+  position_size: 1.0
+  commission_per_unit: 0.0
+  slippage_per_unit: 0.0
+  exit_on_session_end: true
+  intrabar_exit_conflict_policy: stop_first
+
+strategy:
+  active_strategy: orb
+  strategy_profile: orb_basic
+  instrument: ES
+  session_name: rth
+  session_timezone: America/New_York
+  ny_open_anchored: false
+  session_start: 09:30
+  session_end: 16:00
+  latest_entry_time: null
+  opening_range_start_time: 09:30
+  opening_range_end_time: 09:35
+  opening_range_minutes: 5
+  enable_long: true
+  enable_short: true
+  long_trigger: break_above_or_high
+  short_trigger: break_below_or_low
+  breakout_confirmation_rule: close_beyond_level
+  require_breakout_close: true
+  require_retest: false
+  retest_rule: touch_level_then_close_through
+  trend_filter: none
+  trend_column: ema_20
+  volatility_filter_enabled: false
+  min_or_width_atr: null
+  max_or_width_atr: null
+  displacement_rule: none
+  displacement_min_body_size: null
+  displacement_min_body_range_ratio: null
+  displacement_min_close_distance: null
+  displacement_min_close_distance_atr: null
+  strong_close_min_body_range_ratio: null
+  strong_close_min_boundary_distance: null
+  strong_close_min_boundary_distance_atr: null
+  invalidate_on_early_counter_liquidity_consumption: false
+  allow_retest_rescue_after_early_liquidity_consumption: false
+  liquidity_target_mode: none
+  liquidity_target_priority: null
+  london_sweep_context_mode: null
+  first_draw_target_rule: null
+  minimum_rr_threshold: null
+  entry_rule: next_bar_open
+  stop_mode: or_boundary
+  stop_atr_multiple: 1.0
+  stop_buffer_points: null
+  stop_buffer_atr_multiple: null
+  wick_reference_mode: null
+  fallback_stop_mode: or_boundary
+  target_rule: r_multiple
+  target_r_multiple: 2.0
+  breakeven_enabled: false
+  breakeven_trigger_r: null
+  breakeven_after_partial: false
+  breakeven_after_first_draw: false
+  partial_take_profit_enabled: false
+  partial_take_profit_rule: null
+  partial_take_profit_r: null
+  partial_take_profit_fraction: null
+  runner_target_rule: null
+  runner_target_priority: null
+  trailing_stop_enabled: false
+  trailing_stop_rule: null
+  trailing_stop_atr_multiple: null
+  runner_trail_rule: null
+  runner_trail_atr_multiple: null
+  max_trades_per_session: 1
+  allowed_trade_windows: null
+  allowed_days_of_week: null
+  news_skip_rules:
+    - major_fed_event
+  discretionary_skip_reasons:
+    - unusual_price_action
+  min_breakout_strength: 0.0
+  label_horizon_bars: 20
+  setup_feature_whitelist: null
+
+modeling:
+  setup_quality_enabled: false
+  ga_enabled: false
+  rl_enabled: false
+
+integrations:
+  qlib_enabled: false
+  finrl_enabled: false
