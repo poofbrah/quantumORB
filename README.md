@@ -2,7 +2,7 @@
 
 `quantumORB` is a custom-built Python research and backtesting framework for intraday futures strategy development, starting with an Opening Range Breakout (ORB) baseline and expanding later into setup-quality modeling, GA-based optimization, and RL-based refinement.
 
-The repository is intentionally structured so the core framework runs without Qlib or FinRL. Those remain optional integrations rather than architectural dependencies.
+The repository is intentionally structured so the core framework can still run without Qlib or FinRL. Those remain optional integrations rather than architectural dependencies.
 
 ## Project Priorities
 
