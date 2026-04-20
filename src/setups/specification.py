@@ -117,10 +117,12 @@ class ORBStrategySpec:
 def strategy_spec_from_config(config: StrategyConfig) -> ORBStrategySpec:
     base = _base_spec(config.strategy_profile)
     defaults = StrategyConfig()
+
     def pick(field_name: str, base_value):
         value = getattr(config, field_name)
         default_value = getattr(defaults, field_name)
         return base_value if value == default_value else value
+
     spec = replace(
         base,
         profile_name=config.strategy_profile,
@@ -467,11 +469,11 @@ def _base_spec(profile_name: str) -> ORBStrategySpec:
             ny_open_anchored=True,
             session_start="09:30",
             session_end="12:00",
-            latest_entry_time="10:30",
+            latest_entry_time="11:30",
             opening_range_start_time="09:30",
             opening_range_end_time="09:45",
             opening_range_minutes=15,
-            require_retest=True,
+            require_retest=False,
             displacement=DisplacementSpec(
                 rule="candle_displacement",
                 min_body_size=None,
@@ -481,8 +483,8 @@ def _base_spec(profile_name: str) -> ORBStrategySpec:
                 strong_close_min_body_range_ratio=0.6,
                 strong_close_min_boundary_distance=2.0,
                 strong_close_min_boundary_distance_atr=None,
-                invalidate_on_early_counter_liquidity_consumption=True,
-                allow_retest_rescue_after_early_liquidity_consumption=True,
+                invalidate_on_early_counter_liquidity_consumption=False,
+                allow_retest_rescue_after_early_liquidity_consumption=False,
             ),
             liquidity=LiquidityFrameworkSpec(
                 mode="directional_continuation",
@@ -497,29 +499,27 @@ def _base_spec(profile_name: str) -> ORBStrategySpec:
                 wick_reference_mode="largest_internal_wick",
                 fallback_stop_mode="or_boundary",
             ),
-            target_rule="liquidity_sequence",
+            target_rule="r_multiple",
             target_r_multiple=2.0,
             management=ManagementSpec(
                 first_draw_target_rule="first_liquidity_in_priority",
-                minimum_rr_threshold=2.0,
-                breakeven_rule="after_partial_or_first_draw_or_r",
-                breakeven_trigger_r=1.0,
-                breakeven_after_partial=True,
+                minimum_rr_threshold=None,
+                breakeven_rule=None,
+                breakeven_trigger_r=None,
+                breakeven_after_partial=False,
                 breakeven_after_first_draw=True,
-                partial_take_profit_rule="first_draw_on_liquidity",
+                partial_take_profit_rule=None,
                 partial_take_profit_r=None,
-                partial_take_profit_fraction=0.5,
-                runner_target_rule="liquidity_sequence",
+                partial_take_profit_fraction=None,
+                runner_target_rule=None,
                 runner_target_priority=(LiquidityLevel.PDH.value, LiquidityLevel.DAY_HIGH.value, LiquidityLevel.H4_HIGH.value, LiquidityLevel.LONDON_HIGH.value),
                 trailing_stop_rule=None,
                 trailing_stop_atr_multiple=None,
-                runner_trail_rule="atr_placeholder",
-                runner_trail_atr_multiple=1.0,
+                runner_trail_rule=None,
+                runner_trail_atr_multiple=None,
             ),
-            allowed_trade_windows=("09:45-10:30",),
+            allowed_trade_windows=("09:45-11:30",),
             news_skip_rules=("major_fed_event", "major_us_macro_release"),
             discretionary_skip_reasons=("unusual_price_action", "poor_displacement_quality"),
         )
     raise ValueError(f"Unsupported ORB profile: {profile_name}")
-
-

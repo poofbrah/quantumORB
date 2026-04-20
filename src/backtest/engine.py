@@ -58,12 +58,16 @@ class BarBacktestEngine:
         run_config = run_config or BacktestRunConfig()
         ordered = price_frame.sort_values(["timestamp", "symbol"], kind="stable").reset_index(drop=True)
         pending = self._build_pending_entries(ordered, setups)
+        session_end_indexes = self._build_session_end_lookup(ordered)
         trades: list[Trade] = []
         active: ActivePosition | None = None
-        exited_this_bar = False
+        skipped_due_to_one_position = 0
 
         for idx, bar in ordered.iterrows():
             exited_this_bar = False
+            if active is not None and self.config.one_position_only and pending.get(idx):
+                skipped_due_to_one_position += len(pending[idx])
+
             if active is not None and bar["symbol"] == active.setup.symbol:
                 active.bars_held += 1
                 result = evaluate_position_on_bar(active, bar, self.execution_config)
@@ -71,7 +75,7 @@ class BarBacktestEngine:
                     trades.append(exit_position(active, pd.Timestamp(bar["timestamp"]), result, self.execution_config))
                     active = None
                     exited_this_bar = True
-                elif self.config.exit_on_session_end and self._is_session_end_bar(ordered, idx, active.setup.symbol):
+                elif self.config.exit_on_session_end and self._is_session_end_bar(idx, session_end_indexes):
                     close_result = close_on_bar_value(active, bar, "close", ExitReason.SESSION_END, self.execution_config)
                     trades.append(exit_position(active, pd.Timestamp(bar["timestamp"]), close_result, self.execution_config))
                     active = None
@@ -81,16 +85,19 @@ class BarBacktestEngine:
                 for setup in pending.get(idx, []):
                     active = enter_position(setup, bar, self.execution_config)
                     active.bars_held += 1
-                    result = evaluate_position_on_bar(active, bar, self.execution_config)
-                    if result is not None and result.get("closed") is not False:
-                        trades.append(exit_position(active, pd.Timestamp(bar["timestamp"]), result, self.execution_config))
-                        active = None
-                        exited_this_bar = True
-                    elif self.config.exit_on_session_end and self._is_session_end_bar(ordered, idx, setup.symbol):
+                    if not bool(setup.context.get("skip_entry_bar_management", False)):
+                        result = evaluate_position_on_bar(active, bar, self.execution_config)
+                        if result is not None and result.get("closed") is not False:
+                            trades.append(exit_position(active, pd.Timestamp(bar["timestamp"]), result, self.execution_config))
+                            active = None
+                        elif self.config.exit_on_session_end and self._is_session_end_bar(idx, session_end_indexes):
+                            close_result = close_on_bar_value(active, bar, "close", ExitReason.SESSION_END, self.execution_config)
+                            trades.append(exit_position(active, pd.Timestamp(bar["timestamp"]), close_result, self.execution_config))
+                            active = None
+                    elif self.config.exit_on_session_end and self._is_session_end_bar(idx, session_end_indexes):
                         close_result = close_on_bar_value(active, bar, "close", ExitReason.SESSION_END, self.execution_config)
                         trades.append(exit_position(active, pd.Timestamp(bar["timestamp"]), close_result, self.execution_config))
                         active = None
-                        exited_this_bar = True
                     break
 
         if active is not None:
@@ -128,6 +135,7 @@ class BarBacktestEngine:
                 "intrabar_exit_conflict_policy": self.config.intrabar_exit_conflict_policy.value,
                 "one_position_only": self.config.one_position_only,
                 "initial_capital": self.config.initial_capital,
+                "skipped_due_to_one_position": skipped_due_to_one_position,
             },
         )
 
@@ -135,17 +143,38 @@ class BarBacktestEngine:
         pending: dict[int, list[SetupEvent]] = {}
         ordered_setups = sorted(setups, key=lambda setup: (setup.timestamp, setup.symbol, setup.setup_id))
         for setup in ordered_setups:
-            mask = (ordered["symbol"] == setup.symbol) & (ordered["timestamp"] > pd.Timestamp(setup.timestamp))
-            eligible = ordered.index[mask]
+            entry_mode = str(setup.context.get("entry_fill_mode", "next_bar_open"))
+            expiration_text = setup.context.get("entry_expiration_time")
+            expiration_time = pd.Timestamp(expiration_text) if expiration_text else None
+            if entry_mode == "limit_touch":
+                mask = (ordered["symbol"] == setup.symbol) & (ordered["timestamp"] >= pd.Timestamp(setup.timestamp))
+                if expiration_time is not None:
+                    mask &= ordered["timestamp"] <= expiration_time
+                touched = (ordered["low"] <= float(setup.entry_reference)) & (ordered["high"] >= float(setup.entry_reference))
+                eligible = ordered.index[mask & touched]
+            elif entry_mode == "signal_close":
+                mask = (ordered["symbol"] == setup.symbol) & (ordered["timestamp"] >= pd.Timestamp(setup.timestamp))
+                if expiration_time is not None:
+                    mask &= ordered["timestamp"] <= expiration_time
+                eligible = ordered.index[mask]
+            else:
+                mask = (ordered["symbol"] == setup.symbol) & (ordered["timestamp"] > pd.Timestamp(setup.timestamp))
+                eligible = ordered.index[mask]
             if len(eligible) == 0:
                 continue
             pending.setdefault(int(eligible[0]), []).append(setup)
         return pending
 
-    def _is_session_end_bar(self, ordered: pd.DataFrame, idx: int, symbol: str) -> bool:
-        current = ordered.iloc[idx]
-        later_same_symbol = ordered[(ordered.index > idx) & (ordered["symbol"] == symbol)]
-        if later_same_symbol.empty:
-            return True
-        next_row = later_same_symbol.iloc[0]
-        return pd.Timestamp(next_row["session_date"]) != pd.Timestamp(current["session_date"])
+    def _build_session_end_lookup(self, ordered: pd.DataFrame) -> set[int]:
+        if ordered.empty:
+            return set()
+        session_end_indexes: set[int] = set()
+        session_column = "session_date" if "session_date" in ordered.columns else None
+        group_keys = ["symbol", session_column] if session_column else ["symbol"]
+        for _, group in ordered.groupby(group_keys, sort=False):
+            session_end_indexes.add(int(group.index[-1]))
+        return session_end_indexes
+
+    def _is_session_end_bar(self, idx: int, session_end_indexes: set[int]) -> bool:
+        return idx in session_end_indexes
+

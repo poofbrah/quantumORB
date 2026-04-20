@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import time
 from uuid import uuid4
@@ -33,6 +34,22 @@ ADVANCED_FORMAL_ONLY_FIELDS = {
     "runner_target_sequence",
     "runner_trail",
 }
+DIAGNOSTIC_KEYS = (
+    "candidate_windows_scanned",
+    "breakout_candidates",
+    "setups_emitted",
+    "breakout_not_achieved",
+    "wick_only_breakout",
+    "failed_strong_close_threshold",
+    "failed_retest_requirement",
+    "failed_latest_entry_cutoff",
+    "failed_trend_filter",
+    "failed_volatility_filter",
+    "failed_minimum_rr_threshold",
+    "failed_liquidity_target_lookup",
+    "failed_stop_calculation",
+    "duplicate_same_side_session_suppression",
+)
 
 
 @dataclass(slots=True)
@@ -164,13 +181,23 @@ class ORBConfig:
         )
 
 
+@dataclass(slots=True)
+class ORBDetectionDiagnostics:
+    counts: dict[str, int]
+    audit_frame: pd.DataFrame
+
+
 class ORBSetupDetector(BaseSetupDetector):
     def __init__(self, config: ORBConfig | None = None) -> None:
         self.config = config or ORBConfig()
 
     def detect(self, frame: pd.DataFrame) -> list[SetupEvent]:
+        setups, _ = self.detect_with_diagnostics(frame)
+        return setups
+
+    def detect_with_diagnostics(self, frame: pd.DataFrame) -> tuple[list[SetupEvent], ORBDetectionDiagnostics]:
         if frame.empty:
-            return []
+            return [], ORBDetectionDiagnostics(counts={key: 0 for key in DIAGNOSTIC_KEYS}, audit_frame=pd.DataFrame())
 
         required_columns = {"timestamp", "symbol", "session_date", "close", "high", "low", "or_high", "or_low", "or_width", "open"}
         missing = required_columns - set(frame.columns)
@@ -180,74 +207,120 @@ class ORBSetupDetector(BaseSetupDetector):
         ordered = add_liquidity_levels(frame, timezone=self.config.timezone)
         ordered = ordered.sort_values(["symbol", "timestamp"], kind="stable").reset_index(drop=True)
         setups: list[SetupEvent] = []
+        audit_rows: list[dict[str, object]] = []
+        counts = Counter({key: 0 for key in DIAGNOSTIC_KEYS})
         for _, session_frame in ordered.groupby(["symbol", "session_date"], sort=False):
-            setups.extend(self._detect_session(session_frame.reset_index(drop=True)))
-        return setups
+            session_setups, session_audit, session_counts = self._detect_session(session_frame.reset_index(drop=True))
+            setups.extend(session_setups)
+            audit_rows.extend(session_audit)
+            counts.update(session_counts)
+        return setups, ORBDetectionDiagnostics(counts=dict(counts), audit_frame=pd.DataFrame(audit_rows))
 
-    def _detect_session(self, session_frame: pd.DataFrame) -> list[SetupEvent]:
+    def _detect_session(self, session_frame: pd.DataFrame) -> tuple[list[SetupEvent], list[dict[str, object]], Counter]:
         detected: list[SetupEvent] = []
+        audit_rows: list[dict[str, object]] = []
+        counts = Counter({key: 0 for key in DIAGNOSTIC_KEYS})
         long_emitted = False
         short_emitted = False
 
         for idx in range(len(session_frame)):
-            if len(detected) >= self.config.max_trades_per_session:
-                break
             row = session_frame.iloc[idx]
             if pd.isna(row.get("or_high")) or pd.isna(row.get("or_low")):
                 continue
-            if not self._is_time_allowed(row):
-                continue
+
+            counts["candidate_windows_scanned"] += 1
             history = session_frame.iloc[: idx + 1]
-            if self.config.enable_long and not long_emitted and self._is_long_candidate(history):
-                setup = self._build_setup(history, Side.LONG)
-                if setup is not None:
-                    detected.append(setup)
-                    long_emitted = True
-                    continue
-            if self.config.enable_short and not short_emitted and self._is_short_candidate(history):
-                setup = self._build_setup(history, Side.SHORT)
-                if setup is not None:
-                    detected.append(setup)
-                    short_emitted = True
-        return detected
+            breakout_side, body_close_outside, wick_only = self._classify_breakout(row)
+            latest_entry_pass = self._is_time_allowed(row)
+            strong_close_pass = None
+            retest_pass = None
+            trend_pass = None
+            volatility_pass = None
+            rr_estimate = None
+            emitted = False
+            rejection_reason = None
 
-    def _is_long_candidate(self, history: pd.DataFrame) -> bool:
-        row = history.iloc[-1]
-        prior_close = history.iloc[-2]["close"] if len(history) > 1 else pd.NA
-        if row["close"] <= row["or_high"]:
-            return False
-        if self.config.require_breakout_close and not pd.isna(prior_close) and prior_close > row["or_high"]:
-            return False
-        if not self._passes_strong_close(row, Side.LONG):
-            return False
-        if float(row.get("breakout_strength", 0.0)) < self.config.min_breakout_strength:
-            return False
-        if not self._passes_retest(row, Side.LONG):
-            return False
-        if not self._passes_volatility_filter(row):
-            return False
-        if not self._passes_trend_filter(row, Side.LONG):
-            return False
-        return True
+            if not latest_entry_pass:
+                counts["failed_latest_entry_cutoff"] += 1
+                rejection_reason = "failed_latest_entry_cutoff"
+            elif breakout_side is None:
+                if wick_only:
+                    counts["wick_only_breakout"] += 1
+                    rejection_reason = "wick_only_breakout"
+                else:
+                    counts["breakout_not_achieved"] += 1
+                    rejection_reason = "breakout_not_achieved"
+            else:
+                counts["breakout_candidates"] += 1
+                if (breakout_side is Side.LONG and long_emitted) or (breakout_side is Side.SHORT and short_emitted):
+                    counts["duplicate_same_side_session_suppression"] += 1
+                    rejection_reason = "duplicate_same_side_session_suppression"
+                elif len(detected) >= self.config.max_trades_per_session:
+                    counts["duplicate_same_side_session_suppression"] += 1
+                    rejection_reason = "duplicate_same_side_session_suppression"
+                else:
+                    strong_close_pass = self._passes_strong_close(row, breakout_side)
+                    retest_pass = self._passes_retest(row, breakout_side)
+                    trend_pass = self._passes_trend_filter(row, breakout_side)
+                    volatility_pass = self._passes_volatility_filter(row)
+                    if not strong_close_pass:
+                        counts["failed_strong_close_threshold"] += 1
+                        rejection_reason = "failed_strong_close_threshold"
+                    elif not retest_pass:
+                        counts["failed_retest_requirement"] += 1
+                        rejection_reason = "failed_retest_requirement"
+                    elif not trend_pass:
+                        counts["failed_trend_filter"] += 1
+                        rejection_reason = "failed_trend_filter"
+                    elif not volatility_pass:
+                        counts["failed_volatility_filter"] += 1
+                        rejection_reason = "failed_volatility_filter"
+                    else:
+                        setup, setup_meta = self._prepare_setup(history, breakout_side)
+                        rr_estimate = setup_meta.get("rr_estimate")
+                        rejection_reason = setup_meta.get("rejection_reason")
+                        if rejection_reason == "failed_minimum_rr_threshold":
+                            counts["failed_minimum_rr_threshold"] += 1
+                        elif rejection_reason == "failed_liquidity_target_lookup":
+                            counts["failed_liquidity_target_lookup"] += 1
+                        elif rejection_reason == "failed_stop_calculation":
+                            counts["failed_stop_calculation"] += 1
+                        if setup is not None:
+                            detected.append(setup)
+                            emitted = True
+                            counts["setups_emitted"] += 1
+                            if breakout_side is Side.LONG:
+                                long_emitted = True
+                            else:
+                                short_emitted = True
 
-    def _is_short_candidate(self, history: pd.DataFrame) -> bool:
-        row = history.iloc[-1]
-        prior_close = history.iloc[-2]["close"] if len(history) > 1 else pd.NA
-        if row["close"] >= row["or_low"]:
-            return False
-        if self.config.require_breakout_close and not pd.isna(prior_close) and prior_close < row["or_low"]:
-            return False
-        if not self._passes_strong_close(row, Side.SHORT):
-            return False
-        if float(row.get("breakout_strength", 0.0)) < self.config.min_breakout_strength:
-            return False
-        if not self._passes_retest(row, Side.SHORT):
-            return False
-        if not self._passes_volatility_filter(row):
-            return False
-        if not self._passes_trend_filter(row, Side.SHORT):
-            return False
-        return True
+            audit_rows.append(
+                self._build_audit_row(
+                    row=row,
+                    breakout_side=breakout_side,
+                    body_close_outside=body_close_outside,
+                    latest_entry_pass=latest_entry_pass,
+                    strong_close_pass=strong_close_pass,
+                    retest_pass=retest_pass,
+                    trend_pass=trend_pass,
+                    volatility_pass=volatility_pass,
+                    rr_estimate=rr_estimate,
+                    emitted=emitted,
+                    rejection_reason=rejection_reason,
+                )
+            )
+        return detected, audit_rows, counts
+
+    def _classify_breakout(self, row: pd.Series) -> tuple[Side | None, bool, bool]:
+        if float(row["close"]) > float(row["or_high"]):
+            return Side.LONG, True, False
+        if float(row["close"]) < float(row["or_low"]):
+            return Side.SHORT, True, False
+        if float(row["high"]) > float(row["or_high"]):
+            return None, False, True
+        if float(row["low"]) < float(row["or_low"]):
+            return None, False, True
+        return None, False, False
 
     def _passes_strong_close(self, row: pd.Series, direction: Side) -> bool:
         if self.config.displacement_rule == "none":
@@ -262,7 +335,7 @@ class ORBSetupDetector(BaseSetupDetector):
             return False
         atr = row.get("atr")
         if self.config.strong_close_min_boundary_distance_atr is not None:
-            if pd.isna(atr) or atr <= 0:
+            if pd.isna(atr) or float(atr) <= 0:
                 return False
             if boundary_distance / float(atr) < self.config.strong_close_min_boundary_distance_atr:
                 return False
@@ -308,55 +381,50 @@ class ORBSetupDetector(BaseSetupDetector):
             if current_day not in {day.lower() for day in self.config.allowed_days_of_week}:
                 return False
         if self.config.allowed_trade_windows:
-            in_window = False
             for window in self.config.allowed_trade_windows:
                 start, end = window.split("-")
                 if time.fromisoformat(start) <= current_time <= time.fromisoformat(end):
-                    in_window = True
-                    break
-            if not in_window:
-                return False
+                    return True
+            return False
         return True
 
-    def _build_setup(self, history: pd.DataFrame, direction: Side) -> SetupEvent | None:
+    def _prepare_setup(self, history: pd.DataFrame, direction: Side) -> tuple[SetupEvent | None, dict[str, object]]:
         row = history.iloc[-1]
-        stop_reference = self._compute_stop(history, direction)
+        try:
+            stop_reference = self._compute_stop(history, direction)
+        except Exception:
+            return None, {"rejection_reason": "failed_stop_calculation", "rr_estimate": None}
+
         entry_reference = float(row["close"])
         risk = abs(entry_reference - stop_reference)
         if risk == 0.0:
-            return None
+            return None, {"rejection_reason": "failed_stop_calculation", "rr_estimate": None}
 
         first_target_name, first_target_price = select_first_liquidity_target(row, direction.value, self.config.liquidity_target_priority)
-        if self.config.invalidate_on_early_counter_liquidity_consumption and first_target_price is not None:
-            if direction is Side.LONG and float(row["high"]) >= float(first_target_price):
-                return None
-            if direction is Side.SHORT and float(row["low"]) <= float(first_target_price):
-                return None
-
-        rr_to_first = None
-        runner_targets = []
-        target_reference = None
-        if first_target_price is not None:
-            rr_to_first = abs(float(first_target_price) - entry_reference) / risk
-            runner_targets = select_runner_targets(row, direction.value, self.config.liquidity_target_priority, first_target_name)
+        if self.config.target_rule == "liquidity_sequence":
+            if first_target_price is None:
+                return None, {"rejection_reason": "failed_liquidity_target_lookup", "rr_estimate": None}
             target_reference = float(first_target_price)
+            rr_estimate = abs(target_reference - entry_reference) / risk
+            runner_targets = select_runner_targets(row, direction.value, self.config.liquidity_target_priority, first_target_name)
         else:
             target_reference = self._compute_default_target(entry_reference, stop_reference, direction)
-            rr_to_first = abs(target_reference - entry_reference) / risk
+            rr_estimate = abs(target_reference - entry_reference) / risk
+            runner_targets = []
 
-        if self.config.minimum_rr_threshold is not None and rr_to_first < self.config.minimum_rr_threshold:
-            return None
+        if self.config.minimum_rr_threshold is not None and rr_estimate < self.config.minimum_rr_threshold:
+            return None, {"rejection_reason": "failed_minimum_rr_threshold", "rr_estimate": rr_estimate}
 
         feature_snapshot = self._build_feature_snapshot(row)
         if self.config.setup_feature_whitelist is None:
             feature_snapshot.update(
                 {
-                    "rr_to_first_target": rr_to_first,
+                    "rr_to_first_target": rr_estimate,
                     "first_liquidity_target": first_target_name,
                 }
             )
 
-        return SetupEvent(
+        setup = SetupEvent(
             setup_id=f"orb-{uuid4().hex[:12]}",
             setup_name="orb",
             symbol=str(row["symbol"]),
@@ -384,7 +452,7 @@ class ORBSetupDetector(BaseSetupDetector):
                 "liquidity_target_priority": list(self.config.liquidity_target_priority),
                 "first_liquidity_target": first_target_name,
                 "first_liquidity_target_price": first_target_price,
-                "rr_to_first_target": rr_to_first,
+                "rr_to_first_target": rr_estimate,
                 "first_draw_target_rule": self.config.first_draw_target_rule,
                 "minimum_rr_threshold": self.config.minimum_rr_threshold,
                 "partial_take_profit_rule": self.config.partial_take_profit_rule,
@@ -404,6 +472,61 @@ class ORBSetupDetector(BaseSetupDetector):
                 "formalized_only_fields": list(self.config.formalized_only_fields),
             },
         )
+        return setup, {"rejection_reason": None, "rr_estimate": rr_estimate}
+
+    def _build_audit_row(
+        self,
+        row: pd.Series,
+        breakout_side: Side | None,
+        body_close_outside: bool,
+        latest_entry_pass: bool,
+        strong_close_pass: bool | None,
+        retest_pass: bool | None,
+        trend_pass: bool | None,
+        volatility_pass: bool | None,
+        rr_estimate: float | None,
+        emitted: bool,
+        rejection_reason: str | None,
+    ) -> dict[str, object]:
+        candle_range = float(row.get("candle_range", row["high"] - row["low"]))
+        candle_body = float(row.get("candle_body", abs(row["close"] - row["open"])))
+        body_range_ratio = candle_body / candle_range if candle_range > 0 else 0.0
+        if breakout_side is Side.LONG:
+            boundary_distance = float(row["close"] - row["or_high"])
+            breakout_label = "long"
+        elif breakout_side is Side.SHORT:
+            boundary_distance = float(row["or_low"] - row["close"])
+            breakout_label = "short"
+        elif float(row["high"]) > float(row["or_high"]):
+            boundary_distance = float(row["high"] - row["or_high"])
+            breakout_label = "long_wick_only"
+        elif float(row["low"]) < float(row["or_low"]):
+            boundary_distance = float(row["or_low"] - row["low"])
+            breakout_label = "short_wick_only"
+        else:
+            boundary_distance = 0.0
+            breakout_label = "none"
+        return {
+            "timestamp": row["timestamp"],
+            "symbol": row["symbol"],
+            "session_date": row["session_date"],
+            "or_high": row["or_high"],
+            "or_low": row["or_low"],
+            "close": row["close"],
+            "candle_body_size": candle_body,
+            "body_range_ratio": body_range_ratio,
+            "boundary_distance_beyond_or": boundary_distance,
+            "breakout_side": breakout_label,
+            "body_close_outside_or": body_close_outside,
+            "latest_entry_pass": latest_entry_pass,
+            "strong_close_pass": strong_close_pass,
+            "retest_pass": retest_pass,
+            "trend_pass": trend_pass,
+            "volatility_pass": volatility_pass,
+            "estimated_rr": rr_estimate,
+            "emitted_setup": emitted,
+            "rejection_reason": rejection_reason or "emitted",
+        }
 
     def _build_feature_snapshot(self, row: pd.Series) -> dict[str, float | int | str | bool | None]:
         if self.config.setup_feature_whitelist is not None:
@@ -435,7 +558,6 @@ class ORBSetupDetector(BaseSetupDetector):
         or_bars = self._opening_range_bars(history)
         midpoint_stop = self._midpoint_buffer_stop(row, direction)
         wick_stop = self._range_wick_buffer_stop(or_bars, direction, row)
-
         if self.config.formal_stop_rule == "or_midpoint_buffer":
             return midpoint_stop
         if self.config.formal_stop_rule == "range_wick_buffer":
@@ -497,8 +619,3 @@ class ORBSetupDetector(BaseSetupDetector):
     def _compute_default_target(self, entry_reference: float, stop_reference: float, direction: Side) -> float:
         risk = abs(entry_reference - stop_reference)
         return float(entry_reference + risk * self.config.target_r_multiple) if direction is Side.LONG else float(entry_reference - risk * self.config.target_r_multiple)
-
-
-
-
-

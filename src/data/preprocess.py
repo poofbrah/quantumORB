@@ -9,6 +9,8 @@ COLUMN_ALIASES = {
     "datetime": "timestamp",
     "date": "timestamp",
     "time": "timestamp",
+    "timestamp et": "timestamp",
+    "timestamp_et": "timestamp",
     "o": "open",
     "h": "high",
     "l": "low",
@@ -16,9 +18,12 @@ COLUMN_ALIASES = {
     "v": "volume",
     "ticker": "symbol",
 }
+ET_TIMESTAMP_COLUMNS = {"timestamp et", "timestamp_et"}
+DEFAULT_NAIVE_TIMESTAMP_TIMEZONE = "UTC"
 
 
 def standardize_ohlcv_schema(frame: pd.DataFrame) -> pd.DataFrame:
+    source_columns = {column.lower(): column for column in frame.columns}
     renamed = frame.rename(
         columns={column: COLUMN_ALIASES.get(column.lower(), column.lower()) for column in frame.columns}
     )
@@ -28,14 +33,23 @@ def standardize_ohlcv_schema(frame: pd.DataFrame) -> pd.DataFrame:
 
     ordered_columns = REQUIRED_COLUMNS + [col for col in renamed.columns if col not in REQUIRED_COLUMNS]
     standardized = renamed.loc[:, list(dict.fromkeys(ordered_columns))].copy()
-    standardized["timestamp"] = pd.to_datetime(standardized["timestamp"], utc=True, errors="raise")
+    standardized["timestamp"] = _parse_timestamp_column(standardized["timestamp"], source_columns)
 
-    numeric_columns = ["open", "high", "low", "close", "volume"]
+    numeric_columns = [column for column in ["open", "high", "low", "close", "volume", "vwap_rth", "vwap_eth"] if column in standardized.columns]
     for column in numeric_columns:
         standardized[column] = pd.to_numeric(standardized[column], errors="raise")
 
     standardized["symbol"] = standardized["symbol"].astype(str)
     return standardized
+
+
+def _parse_timestamp_column(series: pd.Series, source_columns: dict[str, str]) -> pd.Series:
+    parsed = pd.to_datetime(series, errors="raise")
+    if getattr(parsed.dt, "tz", None) is not None:
+        return parsed
+    if any(column in ET_TIMESTAMP_COLUMNS for column in source_columns):
+        return parsed.dt.tz_localize("America/New_York", ambiguous="infer", nonexistent="shift_forward")
+    return parsed.dt.tz_localize(DEFAULT_NAIVE_TIMESTAMP_TIMEZONE)
 
 
 def clean_ohlcv(frame: pd.DataFrame) -> pd.DataFrame:
@@ -87,19 +101,21 @@ def resample_ohlcv(frame: pd.DataFrame, rule: str) -> pd.DataFrame:
     pieces: list[pd.DataFrame] = []
     for symbol, group in frame.groupby("symbol", sort=False):
         indexed = group.sort_values("timestamp").set_index("timestamp")
-        resampled = indexed.resample(rule).agg(
-            {
-                "open": "first",
-                "high": "max",
-                "low": "min",
-                "close": "last",
-                "volume": "sum",
-            }
-        )
+        agg_map = {
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+            "volume": "sum",
+        }
+        for optional_column in ("vwap_rth", "vwap_eth"):
+            if optional_column in indexed.columns:
+                agg_map[optional_column] = "last"
+        resampled = indexed.resample(rule).agg(agg_map)
         resampled = resampled.dropna(subset=["open", "high", "low", "close"])
         resampled["symbol"] = symbol
         for column in indexed.columns:
-            if column in {"open", "high", "low", "close", "volume", "symbol"}:
+            if column in {*agg_map.keys(), "symbol"}:
                 continue
             resampled[column] = indexed[column].resample(rule).last()
         pieces.append(resampled.reset_index())

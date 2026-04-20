@@ -44,7 +44,7 @@ def format_strategy_spec(spec: ORBStrategySpec) -> str:
         f"Allowed Days: {', '.join(spec.allowed_days_of_week) if spec.allowed_days_of_week else 'all days'}",
         f"News Skip Rules: {', '.join(spec.news_skip_rules) if spec.news_skip_rules else 'placeholder only'}",
         f"Discretionary Skip Reasons: {', '.join(spec.discretionary_skip_reasons) if spec.discretionary_skip_reasons else 'placeholder only'}",
-        "Operational Notes: Strong-close breakout qualification, latest-entry cutoff, first-draw liquidity selection, minimum-RR filtering, midpoint/wick stop placement, one partial at first draw, breakeven-after-first-draw, and 2R-gated runner trailing are operational with conservative v1 assumptions. Liquidity context interpretation and richer discretionary filters remain partially formalized.",
+        "Operational Notes: Strong-close breakout qualification, latest-entry cutoff, midpoint/wick stop placement, and fixed 2R targeting are operational. Trailing and multi-stage runner management are disabled for the current debugging pass; richer liquidity-context interpretation remains only partially formalized.",
     ]
     return "\n".join(lines)
 
@@ -53,4 +53,5 @@ def write_strategy_spec(spec: ORBStrategySpec, path: str | Path) -> None:
     file_path = Path(path)
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(format_strategy_spec(spec), encoding="utf-8")
+
 

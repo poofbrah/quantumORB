@@ -95,8 +95,18 @@ class Trade:
     entry_time: datetime
     entry_price: float
     size: float
+    trade_day: datetime | None = None
+    setup_time: datetime | None = None
     exit_time: datetime | None = None
     exit_price: float | None = None
+    initial_stop_price: float | None = None
+    final_stop_price: float | None = None
+    partial_exit_price: float | None = None
+    partial_exit_time: datetime | None = None
+    partial_exit_fraction: float | None = None
+    runner_exit_price: float | None = None
+    runner_exit_time: datetime | None = None
+    exit_price_blended: float | None = None
     fees: float = 0.0
     slippage: float = 0.0
     pnl: float | None = None
@@ -108,9 +118,17 @@ class Trade:
     first_liquidity_target: str | None = None
     partial_taken: bool = False
     breakeven_activated: bool = False
+    moved_to_breakeven: bool = False
     runner_target_hit: bool = False
     trail_activated: bool = False
+    trailing_stop_used: bool = False
     stop_mode_used: str | None = None
+    max_favorable_excursion: float | None = None
+    max_adverse_excursion: float | None = None
+    max_favorable_excursion_r: float | None = None
+    max_adverse_excursion_r: float | None = None
+    max_unrealized_profit: float | None = None
+    max_unrealized_loss: float | None = None
     tags: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 

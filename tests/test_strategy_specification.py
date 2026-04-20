@@ -58,10 +58,13 @@ def test_nq_am_displacement_orb_profile_loading() -> None:
     assert profile.ny_open_anchored is True
     assert profile.opening_range_start_time == "09:30"
     assert profile.opening_range_end_time == "09:45"
+    assert profile.latest_entry_time == "11:30"
     assert profile.displacement.rule == "candle_displacement"
-    assert profile.management.first_draw_target_rule == "first_liquidity_in_priority"
-    assert profile.management.minimum_rr_threshold == 2.0
+    assert profile.require_retest is False
+    assert profile.target_rule == "r_multiple"
+    assert profile.target_r_multiple == 2.0
     assert profile.stop.rule == "midpoint_or_wick_buffer"
+    assert profile.management.runner_trail_rule is None
 
 
 def test_opening_range_start_end_config_parsing() -> None:
@@ -129,13 +132,12 @@ def test_strategy_documentation_output() -> None:
 
     assert "Strategy Profile: nq_am_displacement_orb" in text
     assert "NY Open Anchored: yes" in text
+    assert "Latest Entry Time: 11:30" in text
     assert "Opening Range: 09:30-09:45 (15 minutes)" in text
-    assert "Strong Close Definition:" in text
-    assert "First Draw Rule: first_liquidity_in_priority" in text
-    assert "Breakeven After First Draw: yes" in text
-    assert "Runner Trail Rule: atr_placeholder atr_multiple=1.0" in text
-    assert "Minimum RR Threshold: 2.0" in text
-    assert "Liquidity Priority: pdh, pdl, day_high, day_low, h4_high, h4_low, london_high, london_low" in text
+    assert "Retest Requirement: no" in text
+    assert "Target Rule: r_multiple (2.0R if applicable)" in text
+    assert "Runner Trail Rule: none atr_multiple=None" in text
+    assert "Trade Windows: 09:45-11:30" in text
 
 
 def test_strategy_documentation_can_be_written(tmp_path: Path) -> None:
@@ -162,12 +164,9 @@ def test_orb_config_bridge_from_strategy_spec() -> None:
     assert orb_config.ny_open_anchored is True
     assert orb_config.stop_mode == "midpoint_or_wick_buffer"
     assert orb_config.formal_stop_rule == "midpoint_or_wick_buffer"
-    assert orb_config.first_draw_target_rule == "first_liquidity_in_priority"
-    assert orb_config.minimum_rr_threshold == 2.0
+    assert orb_config.latest_entry_time == "11:30"
+    assert orb_config.target_rule == "r_multiple"
+    assert orb_config.target_r_multiple == 2.0
     assert orb_config.breakeven_after_first_draw is True
-    assert orb_config.runner_trail_rule == "atr_placeholder"
-    assert orb_config.formalized_only_fields == ()
-
-
-
+    assert orb_config.runner_trail_rule is None
 

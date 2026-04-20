@@ -99,3 +99,31 @@ def test_load_and_preprocess_pipeline(tmp_path: Path, raw_intraday_frame: pd.Dat
 
     processed = load_and_preprocess_ohlcv(csv_path, timezone="America/New_York", session_start="09:30", session_end="16:00")
     assert len(processed) == 2
+
+
+def test_nq_dataset_schema_loads_without_manual_edits(tmp_path: Path) -> None:
+    frame = pd.DataFrame(
+        {
+            "timestamp ET": ["2024-01-02 09:30:00", "2024-01-02 09:31:00", "2024-01-02 09:32:00"],
+            "open": [15100.0, 15110.0, 15120.0],
+            "high": [15120.0, 15130.0, 15140.0],
+            "low": [15090.0, 15100.0, 15110.0],
+            "close": [15110.0, 15120.0, 15135.0],
+            "volume": [1000, 1100, 1200],
+            "Vwap_RTH": [15105.0, 15115.0, 15126.0],
+            "Vwap_ETH": [15102.0, 15112.0, 15122.0],
+        }
+    )
+    csv_path = tmp_path / "Dataset_NQ_1min_2022_2025.csv"
+    frame.to_csv(csv_path, index=False)
+
+    processed = load_and_preprocess_ohlcv(csv_path, timezone="America/New_York")
+
+    assert list(processed["symbol"].unique()) == ["NQ"]
+    assert processed.iloc[0]["timestamp"].hour == 9
+    assert processed.iloc[0]["timestamp"].minute == 30
+    assert str(processed.iloc[0]["timestamp"].tzinfo) in {"America/New_York", "US/Eastern"}
+    assert "vwap_rth" in processed.columns
+    assert "vwap_eth" in processed.columns
+    assert processed.iloc[0]["session_date"].hour == 0
+    assert processed.iloc[0]["session_date"].minute == 0

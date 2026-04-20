@@ -55,6 +55,33 @@ def test_trade_entry_occurs_at_next_bar_open() -> None:
     assert trade.entry_price == frame.loc[1, "open"]
 
 
+def test_limit_touch_entry_uses_entry_reference_on_touch_bar() -> None:
+    frame = make_price_frame().copy()
+    frame.loc[1, "low"] = 100.0
+    frame.loc[1, "high"] = 102.0
+    setup = make_setup(frame.loc[1, "timestamp"], side=Side.LONG, target=103.0, stop=99.0)
+    setup.entry_reference = 100.5
+    setup.context["entry_fill_mode"] = "limit_touch"
+    setup.context["skip_entry_bar_management"] = True
+
+    result = BarBacktestEngine(BacktestConfig()).run(frame, [setup])
+
+    assert result.trades[0].entry_time == frame.loc[1, "timestamp"].to_pydatetime()
+    assert result.trades[0].entry_price == 100.5
+
+
+def test_signal_close_entry_uses_same_bar_close() -> None:
+    frame = make_price_frame().copy()
+    setup = make_setup(frame.loc[1, "timestamp"], side=Side.LONG, target=103.0, stop=99.0)
+    setup.context["entry_fill_mode"] = "signal_close"
+    setup.context["skip_entry_bar_management"] = True
+
+    result = BarBacktestEngine(BacktestConfig()).run(frame, [setup])
+
+    assert result.trades[0].entry_time == frame.loc[1, "timestamp"].to_pydatetime()
+    assert result.trades[0].entry_price == frame.loc[1, "close"]
+
+
 def test_target_exit_for_long_trade() -> None:
     frame = make_price_frame()
     setup = make_setup(frame.loc[0, "timestamp"], side=Side.LONG, target=103.0, stop=100.0)
@@ -138,6 +165,43 @@ def test_same_bar_exit_conflict_can_be_target_first() -> None:
         BacktestConfig(intrabar_exit_conflict_policy=IntrabarExitConflictPolicy.TARGET_FIRST)
     ).run(frame, [setup])
     assert result.trades[0].exit_reason == "target"
+
+
+def test_session_end_exit_uses_precomputed_lookup() -> None:
+    timestamps = pd.to_datetime(
+        [
+            "2024-01-02 15:58",
+            "2024-01-02 15:59",
+            "2024-01-03 09:30",
+            "2024-01-03 09:31",
+        ],
+        utc=False,
+    ).tz_localize("America/New_York")
+    frame = pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "symbol": ["ES"] * 4,
+            "session_date": [
+                pd.Timestamp("2024-01-02", tz="America/New_York"),
+                pd.Timestamp("2024-01-02", tz="America/New_York"),
+                pd.Timestamp("2024-01-03", tz="America/New_York"),
+                pd.Timestamp("2024-01-03", tz="America/New_York"),
+            ],
+            "open": [100.0, 100.2, 100.4, 100.6],
+            "high": [100.3, 100.4, 100.7, 100.8],
+            "low": [99.9, 100.0, 100.3, 100.4],
+            "close": [100.1, 100.25, 100.5, 100.7],
+            "volume": [100, 100, 100, 100],
+            "contract": ["ESH4"] * 4,
+        }
+    )
+    setup = make_setup(frame.loc[0, "timestamp"], side=Side.LONG, target=110.0, stop=95.0)
+
+    result = BarBacktestEngine(BacktestConfig(exit_on_session_end=True)).run(frame, [setup])
+
+    assert len(result.trades) == 1
+    assert result.trades[0].exit_reason == "session_end"
+    assert result.trades[0].exit_time == frame.loc[1, "timestamp"].to_pydatetime()
 
 
 def test_metric_calculation_basics() -> None:
