@@ -182,6 +182,75 @@ def save_model_summary_table_image(model_summary: pd.DataFrame, path: Path) -> N
     _save_figure(fig, path)
 
 
+def build_paper_experiment_comparison_frame(
+    baseline_metrics: dict[str, object],
+    baseline_best_thresholds: dict[str, dict[str, object]],
+    lstm_best_threshold: dict[str, object] | None = None,
+) -> pd.DataFrame:
+    rows: list[dict[str, object]] = [
+        {
+            "model_name": "raw_strategy",
+            "selection_rule": "all_setups",
+            "probability_threshold": None,
+            "trades_executed": baseline_metrics.get("trades_executed"),
+            "win_rate": baseline_metrics.get("win_rate"),
+            "profit_factor": baseline_metrics.get("profit_factor"),
+            "net_pnl": baseline_metrics.get("net_pnl"),
+            "max_drawdown": baseline_metrics.get("max_drawdown"),
+            "sharpe": baseline_metrics.get("sharpe"),
+            "sortino": baseline_metrics.get("sortino"),
+            "calmar": baseline_metrics.get("calmar"),
+        }
+    ]
+    for model_name, payload in baseline_best_thresholds.items():
+        rows.append(
+            {
+                "model_name": model_name,
+                "selection_rule": "probability_filter",
+                "probability_threshold": payload.get("best_threshold"),
+                "trades_executed": payload.get("trades_executed"),
+                "win_rate": payload.get("win_rate"),
+                "profit_factor": payload.get("profit_factor"),
+                "net_pnl": payload.get("net_pnl"),
+                "max_drawdown": payload.get("max_drawdown"),
+                "sharpe": payload.get("sharpe"),
+                "sortino": payload.get("sortino"),
+                "calmar": payload.get("calmar"),
+            }
+        )
+    if lstm_best_threshold is not None:
+        rows.append(
+            {
+                "model_name": "lstm",
+                "selection_rule": "probability_filter",
+                "probability_threshold": lstm_best_threshold.get("threshold"),
+                "trades_executed": lstm_best_threshold.get("trades_executed"),
+                "win_rate": lstm_best_threshold.get("win_rate"),
+                "profit_factor": lstm_best_threshold.get("profit_factor"),
+                "net_pnl": lstm_best_threshold.get("net_pnl"),
+                "max_drawdown": lstm_best_threshold.get("max_drawdown"),
+                "sharpe": lstm_best_threshold.get("sharpe"),
+                "sortino": lstm_best_threshold.get("sortino"),
+                "calmar": lstm_best_threshold.get("calmar"),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def save_metric_bar_chart(comparison: pd.DataFrame, path: Path, metric: str, title: str) -> None:
+    figure = plt.figure(figsize=(8, 4.5))
+    ax = figure.add_subplot(111)
+    ordered = comparison.copy()
+    labels = ordered["model_name"].astype(str).tolist()
+    values = pd.to_numeric(ordered[metric], errors="coerce")
+    ax.bar(labels, values, color=["#4C78A8", "#59A14F", "#F28E2B", "#E15759"][: len(labels)])
+    ax.set_title(title)
+    ax.set_ylabel(metric.replace("_", " ").title())
+    ax.grid(axis="y", alpha=0.25)
+    ax.tick_params(axis="x", rotation=20)
+    _save_figure(figure, path)
+
+
 def _format_numeric(value: object) -> str:
     if value is None:
         return "n/a"

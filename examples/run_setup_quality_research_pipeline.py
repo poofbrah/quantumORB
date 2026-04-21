@@ -46,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-mode", choices=["fixed_r", "liquidity"], default="liquidity")
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--disable-trend-alignment", action="store_true")
-    parser.add_argument("--disable-fvg-context", action="store_true")
+    parser.add_argument("--require-fvg-context", action="store_true")
     return parser.parse_args()
 
 
@@ -77,7 +77,7 @@ def main() -> None:
             target_r_multiple=2.0,
             target_mode=args.target_mode,
             require_trend_alignment=not args.disable_trend_alignment,
-            require_fvg_context=not args.disable_fvg_context,
+            require_fvg_context=args.require_fvg_context,
         )
     )
     setups = detector.detect(featured)
@@ -232,7 +232,10 @@ def main() -> None:
             "profit_factor": best_row["profit_factor"],
             "net_pnl": best_row["net_pnl"],
             "max_drawdown": best_row["max_drawdown"],
+            "max_drawdown_pct": best_row["max_drawdown_pct"],
             "sharpe": best_row["sharpe"],
+            "sortino": best_row["sortino"],
+            "calmar": best_row["calmar"],
         }
 
     fold_results_frame = pd.DataFrame(fold_rows)
@@ -252,7 +255,7 @@ def main() -> None:
         "walk_forward_folds": len(splits),
         "target_mode": args.target_mode,
         "require_trend_alignment": not args.disable_trend_alignment,
-        "require_fvg_context": not args.disable_fvg_context,
+        "require_fvg_context": args.require_fvg_context,
         "baseline_all_setups": baseline_metrics,
         "model_summaries": model_summary_frame.to_dict(orient="records"),
         "best_thresholds": best_model_payload,

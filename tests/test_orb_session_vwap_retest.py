@@ -126,6 +126,26 @@ def make_short_frame() -> pd.DataFrame:
     return frame
 
 
+def make_choppy_short_reversion_frame() -> pd.DataFrame:
+    frame = make_long_frame().copy()
+    frame.loc[15, ["open", "high", "low", "close"]] = [100.8, 101.5, 100.7, 101.1]
+    frame.loc[16, ["open", "high", "low", "close", "vwap_rth"]] = [101.2, 101.6, 100.4, 100.8, 100.9]
+    frame.loc[15:, "trend_bias"] = 0
+    frame.loc[15:, "trend_spread"] = 0.03
+    frame.loc[15:, "breakout_strength"] = 0.05
+    return frame
+
+
+def make_choppy_long_reversion_frame() -> pd.DataFrame:
+    frame = make_long_frame().copy()
+    frame.loc[15, ["open", "high", "low", "close"]] = [99.2, 99.3, 98.5, 98.9]
+    frame.loc[16, ["open", "high", "low", "close", "vwap_rth"]] = [98.8, 100.0, 98.6, 99.2, 99.1]
+    frame.loc[15:, "trend_bias"] = 0
+    frame.loc[15:, "trend_spread"] = 0.03
+    frame.loc[15:, "breakout_strength"] = 0.05
+    return frame
+
+
 def test_orb_session_vwap_retest_detects_long_after_breakout_then_vwap_touch() -> None:
     detector = ORBSessionVWAPRetestDetector(
         ORBSessionVWAPRetestConfig(opening_range_minutes=15, allowed_trade_windows=("09:45-11:30",))
@@ -244,5 +264,90 @@ def test_orb_session_vwap_retest_can_require_recent_fvg_context() -> None:
     setups = detector.detect(frame)
 
     assert setups == []
+
+
+def test_orb_session_vwap_retest_range_reversion_detects_short_in_chop() -> None:
+    detector = ORBSessionVWAPRetestDetector(
+        ORBSessionVWAPRetestConfig(
+            opening_range_minutes=15,
+            allowed_trade_windows=("09:45-11:30",),
+            entry_family_mode="range_reversion",
+        )
+    )
+
+    setups = detector.detect(make_choppy_short_reversion_frame())
+
+    assert len(setups) == 1
+    setup = setups[0]
+    assert setup.direction is Side.SHORT
+    assert setup.context["entry_family"] == "range_reversion"
+    assert setup.context["regime_state"] == "chop"
+    assert setup.target_reference == 100.0
+
+
+def test_orb_session_vwap_retest_range_reversion_detects_long_in_chop() -> None:
+    detector = ORBSessionVWAPRetestDetector(
+        ORBSessionVWAPRetestConfig(
+            opening_range_minutes=15,
+            allowed_trade_windows=("09:45-11:30",),
+            entry_family_mode="range_reversion",
+        )
+    )
+
+    setups = detector.detect(make_choppy_long_reversion_frame())
+
+    assert len(setups) == 1
+    setup = setups[0]
+    assert setup.direction is Side.LONG
+    assert setup.context["entry_family"] == "range_reversion"
+    assert setup.target_reference == 100.0
+
+
+def test_orb_session_vwap_retest_hybrid_can_emit_reversion_when_not_trending() -> None:
+    detector = ORBSessionVWAPRetestDetector(
+        ORBSessionVWAPRetestConfig(
+            opening_range_minutes=15,
+            allowed_trade_windows=("09:45-11:30",),
+            entry_family_mode="hybrid",
+        )
+    )
+
+    setups = detector.detect(make_choppy_short_reversion_frame())
+
+    assert len(setups) == 1
+    assert setups[0].context["entry_family"] == "range_reversion"
+
+
+def test_orb_session_vwap_retest_managed_profile_adds_partial_breakeven_and_runner_context() -> None:
+    frame = make_long_frame()
+    frame.loc[15, "high"] = 108.0
+    detector = ORBSessionVWAPRetestDetector(
+        ORBSessionVWAPRetestConfig(
+            opening_range_minutes=15,
+            allowed_trade_windows=("09:45-11:30",),
+            target_mode="liquidity",
+            liquidity_target_priority=("day_high", "h4_high"),
+            managed_profile_enabled=True,
+            partial_take_profit_r_multiple=1.0,
+            partial_take_profit_fraction=0.5,
+            managed_base_target_r_multiple=2.0,
+            enable_runner_targets=True,
+            enable_runner_trailing=True,
+            runner_trail_atr_multiple=1.0,
+        )
+    )
+
+    setups = detector.detect(frame)
+
+    assert len(setups) == 1
+    setup = setups[0]
+    assert round(float(setup.target_reference), 10) == 105.9
+    assert setup.context["first_liquidity_target"] == "1.0R"
+    assert round(float(setup.context["first_liquidity_target_price"]), 10) == 103.6
+    assert setup.context["partial_take_profit_fraction"] == 0.5
+    assert setup.context["breakeven_after_first_draw"] is True
+    assert setup.context["runner_trail_rule"] == "atr_placeholder"
+    assert setup.context["runner_trail_atr_multiple"] == 1.0
+    assert setup.context["runner_targets"] == [{"name": "day_high", "price": 108.0}, {"name": "h4_high", "price": 108.0}]
 
 
