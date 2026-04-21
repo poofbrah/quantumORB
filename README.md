@@ -201,16 +201,9 @@ Decision rule:
 
 - take a trade only if predicted probability is greater than or equal to a threshold
 
-Latest full-run comparison:
 
-| model | rule | threshold | trades | win rate | profit factor | net pnl | sharpe |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| raw_strategy | all setups | n/a | 505 | 0.6436 | 1.1021 | 1192.25 | 0.8826 |
-| logistic_regression | probability filter | 0.75 | 70 | 0.7429 | 1.3283 | 397.50 | 0.9545 |
-| gradient_boosting | probability filter | 0.75 | 56 | 0.6964 | 1.3521 | 312.50 | 0.9667 |
-| lstm | probability filter | 0.75 | 38 | 0.5000 | 1.4681 | 3.7353 | 0.9217 |
 
-### Interpretation
+Interpretation
 
 What these results mean:
 
