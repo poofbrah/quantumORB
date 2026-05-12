@@ -38,7 +38,7 @@ Walk-forward validation:
 ## Main Comparison Table
 
 Source file:
-- [paper_experiment_comparison.csv](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/paper_experiment_comparison.csv)
+- `outputs/final_paper_experiment/paper_experiment_comparison.csv`
 
 | model_name | selection_rule | probability_threshold | trades_executed | win_rate | profit_factor | net_pnl | max_drawdown | sharpe | sortino | calmar |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -88,26 +88,26 @@ Why:
 ## Exact Figures to Cite
 
 ### Final paper summary table
-- [paper_experiment_table.png](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/figures/paper_experiment_table.png)
+- `outputs/final_paper_experiment/figures/paper_experiment_table.png`
 
 Use this in:
 - main Results section
 - model comparison subsection
 
 ### Profit factor comparison
-- [paper_profit_factor.png](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/figures/paper_profit_factor.png)
+- `outputs/final_paper_experiment/figures/paper_profit_factor.png`
 
 Use this to support:
 - probability filtering improved trade quality
 
 ### Sharpe comparison
-- [paper_sharpe.png](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/figures/paper_sharpe.png)
+- `outputs/final_paper_experiment/figures/paper_sharpe.png`
 
 Use this to support:
 - filtered models improved risk-adjusted performance
 
 ### Net PnL comparison
-- [paper_net_pnl.png](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/figures/paper_net_pnl.png)
+- `outputs/final_paper_experiment/figures/paper_net_pnl.png`
 
 Use this to explain:
 - the raw strategy still makes more total money because it trades much more often
@@ -115,16 +115,16 @@ Use this to explain:
 ## Exact Walk-Forward Files to Cite
 
 ### Tabular walk-forward validation
-- [fold_results.csv](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/baseline_tabular/fold_results.csv)
-- [oos_predictions.csv](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/baseline_tabular/oos_predictions.csv)
-- [threshold_sweep.csv](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/baseline_tabular/threshold_sweep.csv)
-- [walk_forward_roc_auc.png](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/baseline_tabular/figures/walk_forward_roc_auc.png)
-- [walk_forward_brier_score.png](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/baseline_tabular/figures/walk_forward_brier_score.png)
+- `outputs/final_paper_experiment/baseline_tabular/fold_results.csv`
+- `outputs/final_paper_experiment/baseline_tabular/oos_predictions.csv`
+- `outputs/final_paper_experiment/baseline_tabular/threshold_sweep.csv`
+- `outputs/final_paper_experiment/baseline_tabular/figures/walk_forward_roc_auc.png`
+- `outputs/final_paper_experiment/baseline_tabular/figures/walk_forward_brier_score.png`
 
 ### LSTM walk-forward validation
-- [fold_results.csv](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/lstm/fold_results.csv)
-- [oos_predictions.csv](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/lstm/oos_predictions.csv)
-- [threshold_sweep.csv](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/lstm/threshold_sweep.csv)
+- `outputs/final_paper_experiment/lstm/fold_results.csv`
+- `outputs/final_paper_experiment/lstm/oos_predictions.csv`
+- `outputs/final_paper_experiment/lstm/threshold_sweep.csv`
 
 ## Suggested Result Paragraph
 
