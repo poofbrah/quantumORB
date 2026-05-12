@@ -82,6 +82,7 @@ quantumORB/
   requirements.txt
   run_github_repro_pipeline.bat
   run_final_paper_experiment.bat
+  run_ta_repro.bat
 ```
 
 ## Architecture Summary
@@ -146,46 +147,46 @@ This is the main strategy used by the final paper experiment runner.
 ## Core Modules
 
 ### Data
-- [src/data](C:/Users/prana/OneDrive/Documents/quantumORB/src/data)
+- `src/data`
 - handles schema normalization and preprocessing
 
 ### Features
-- [src/features](C:/Users/prana/OneDrive/Documents/quantumORB/src/features)
+- `src/features`
 - builds session, OR, VWAP, volatility, and contextual features
 
 ### Setups
-- [src/setups](C:/Users/prana/OneDrive/Documents/quantumORB/src/setups)
+- `src/setups`
 - contains rule-based detectors
 - important file for the paper track:
-  - [src/setups/orb_session_vwap_retest.py](C:/Users/prana/OneDrive/Documents/quantumORB/src/setups/orb_session_vwap_retest.py)
+  - `src/setups/orb_session_vwap_retest.py`
 
 ### Labeling
-- [src/labeling](C:/Users/prana/OneDrive/Documents/quantumORB/src/labeling)
+- `src/labeling`
 - contains forward-safe label generation
 
 ### Models
-- [src/models](C:/Users/prana/OneDrive/Documents/quantumORB/src/models)
+- `src/models`
 - baseline tabular models
 - sequence dataset construction
 - LSTM implementation
 - walk-forward split logic
 
 ### Backtest / Execution
-- [src/backtest](C:/Users/prana/OneDrive/Documents/quantumORB/src/backtest)
-- [src/execution](C:/Users/prana/OneDrive/Documents/quantumORB/src/execution)
+- `src/backtest`
+- `src/execution`
 - bar-based execution and trade lifecycle handling
 
 ### Evaluation / Reporting
-- [src/evaluation](C:/Users/prana/OneDrive/Documents/quantumORB/src/evaluation)
-- [src/reporting](C:/Users/prana/OneDrive/Documents/quantumORB/src/reporting)
+- `src/evaluation`
+- `src/reporting`
 - computes trading metrics and saves charts/tables
 
 ## Current Research Results
 
 The cleanest summary comes from the final paper runner output in:
 
-- [outputs/final_paper_experiment](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment)
-- [FINAL_PAPER_RESULTS.md](C:/Users/prana/OneDrive/Documents/quantumORB/FINAL_PAPER_RESULTS.md)
+- `outputs/final_paper_experiment`
+- `FINAL_PAPER_RESULTS.md`
 
 ### Final Comparison
 
@@ -228,6 +229,16 @@ This supports the main research claim:
 
 This section is written for a TA, professor, or anyone cloning the repository onto another machine.
 
+### Fresh-Machine Guarantee
+
+The repository is intended to run from a clean clone without any machine-specific path edits.
+
+- no `C:\Users\...` paths are required
+- no OneDrive-specific paths are required
+- no local Python install path is hardcoded in the launcher scripts
+- the Windows launchers use the active environment's `python`
+- all required project paths in the codebase are repo-relative, such as `data/raw`, `data/processed`, and `outputs/...`
+
 ### 1. Requirements
 
 - Python `3.11`
@@ -246,11 +257,21 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+If `py` is unavailable on the machine, the equivalent is:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install -e .
+```
+
 ### 3. Dataset Placement
 
 If starting from the raw CSV, place it here:
 
-- [data/raw/Dataset_NQ_1min_2022_2025.csv](C:/Users/prana/OneDrive/Documents/quantumORB/data/raw/Dataset_NQ_1min_2022_2025.csv)
+- `data/raw/Dataset_NQ_1min_2022_2025.csv`
 
 The supported schema is:
 
@@ -271,7 +292,7 @@ py examples/preprocess_nq_dataset.py
 
 This produces:
 
-- [data/processed/nq_1min_2022_2025.parquet](C:/Users/prana/OneDrive/Documents/quantumORB/data/processed/nq_1min_2022_2025.parquet)
+- `data/processed/nq_1min_2022_2025.parquet`
 
 ### 5. Run the Final Paper Experiment
 
@@ -296,9 +317,36 @@ This runs:
 
 Outputs are saved under:
 
-- [outputs/final_paper_experiment](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment)
+- `outputs/final_paper_experiment`
 
-### 6. Run the Broader Reproducible Research Pipeline
+### 6. What To Compare Against the Paper
+
+The main files that should match the reported paper results are:
+
+- `outputs/final_paper_experiment/paper_experiment_comparison.csv`
+- `outputs/final_paper_experiment/paper_experiment_summary.json`
+- `outputs/final_paper_experiment/figures/paper_experiment_table.png`
+
+If a TA or professor is verifying reproducibility, these are the first files they should inspect after the final experiment completes.
+
+### One-Click TA Runner
+
+If you want one command that covers the full paper reproduction path, use:
+
+```powershell
+run_ta_repro.bat
+```
+
+This script will:
+
+- check that `python` is available
+- use the processed parquet if it already exists
+- otherwise preprocess `data/raw/Dataset_NQ_1min_2022_2025.csv`
+- run the final paper experiment
+- run the test suite
+- point the reviewer to the exact output files used for verification
+
+### 7. Run the Broader Reproducible Research Pipeline
 
 If you want the larger project pipeline instead of just the paper experiment:
 
@@ -317,17 +365,17 @@ run_github_repro_pipeline.bat
 These are the most useful files for grading or project review:
 
 ### Final paper outputs
-- [outputs/final_paper_experiment/paper_experiment_comparison.csv](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/paper_experiment_comparison.csv)
-- [outputs/final_paper_experiment/paper_experiment_summary.json](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/paper_experiment_summary.json)
-- [outputs/final_paper_experiment/figures/paper_experiment_table.png](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/figures/paper_experiment_table.png)
-- [outputs/final_paper_experiment/figures/paper_profit_factor.png](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/figures/paper_profit_factor.png)
-- [outputs/final_paper_experiment/figures/paper_sharpe.png](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/figures/paper_sharpe.png)
-- [outputs/final_paper_experiment/figures/paper_net_pnl.png](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/figures/paper_net_pnl.png)
+- `outputs/final_paper_experiment/paper_experiment_comparison.csv`
+- `outputs/final_paper_experiment/paper_experiment_summary.json`
+- `outputs/final_paper_experiment/figures/paper_experiment_table.png`
+- `outputs/final_paper_experiment/figures/paper_profit_factor.png`
+- `outputs/final_paper_experiment/figures/paper_sharpe.png`
+- `outputs/final_paper_experiment/figures/paper_net_pnl.png`
 
 ### Intermediate research outputs
-- [outputs/final_paper_experiment/baseline_tabular](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/baseline_tabular)
-- [outputs/final_paper_experiment/sequence_dataset](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/sequence_dataset)
-- [outputs/final_paper_experiment/lstm](C:/Users/prana/OneDrive/Documents/quantumORB/outputs/final_paper_experiment/lstm)
+- `outputs/final_paper_experiment/baseline_tabular`
+- `outputs/final_paper_experiment/sequence_dataset`
+- `outputs/final_paper_experiment/lstm`
 
 ## Tests
 
@@ -340,6 +388,25 @@ py -m pytest -q
 Latest verified result:
 
 - `100 passed, 1 warning`
+
+## TA Reproduction Checklist
+
+On a fresh machine, the shortest full validation path is:
+
+1. Clone or download the repository.
+2. Create and activate a Python 3.11 environment.
+3. Install dependencies with `pip install -r requirements.txt` and `pip install -e .`.
+4. Place `Dataset_NQ_1min_2022_2025.csv` into `data/raw/`.
+5. Run `py examples/preprocess_nq_dataset.py`.
+6. Run `py examples/run_final_paper_experiment.py`.
+7. Confirm that `outputs/final_paper_experiment/` contains the comparison CSV, summary JSON, and figure files.
+8. If desired, run `py -m pytest -q` to verify the test suite.
+
+The one-click equivalent of steps 5 through 8 is:
+
+```powershell
+run_ta_repro.bat
+```
 
 ## What Is Already Implemented vs Future Work
 
